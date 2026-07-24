@@ -72,12 +72,13 @@ const $ = id => document.getElementById(id);
 const link = $('link'), video = $('video'), msg = $('msg'), meta = $('meta'), plat = $('plat');
 
 const DOMAINS = {
-  terabox: ['terabox.com','terabox.app','1024terabox.com','1024tera.com','4funbox.com','mirrobox.com','nephobox.com','momerybox.com','teraboxapp.com','terasharelink.com','terafileshare.com'],
-  diskwala: ['diskwala.com','diskwala'],
+  terabox: ['terabox','1024tera','1024box','4funbox','mirrobox','nephobox','momerybox','teraboxapp','teraboxlink','teraboxshare','teraboxdrive','terasharelink','terafileshare','terafile','tibibox','gibibox','freeterabox','dubox'],
+  diskwala: ['diskwala'],
   shortfly: ['shortfly','shrtfly']
 };
 function detect(u){
-  try{ const h = new URL(u).hostname.replace(/^www\./,'');
+  try{ u = u.trim(); if(!/^https?:\/\//i.test(u)) u='https://'+u;
+    const h = new URL(u).hostname.toLowerCase().replace(/^www\./,'');
     for(const [k,arr] of Object.entries(DOMAINS)) if(arr.some(d=>h.includes(d))) return k;
   }catch(e){}
   return null;

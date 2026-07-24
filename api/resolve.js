@@ -4,12 +4,16 @@
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36';
 
-const TERABOX = ['terabox.com','terabox.app','1024terabox.com','1024tera.com','4funbox.com',
-  'mirrobox.com','nephobox.com','momerybox.com','teraboxapp.com','terasharelink.com','terafileshare.com'];
+// match on keywords, not exact domains — TeraBox has many rotating mirrors
+const TERABOX = ['terabox','1024tera','1024box','4funbox','mirrobox','nephobox','momerybox',
+  'teraboxapp','teraboxlink','teraboxshare','teraboxdrive','terasharelink','terafileshare',
+  'terafile','tibibox','gibibox','freeterabox','dubox','teraboxdownload'];
+
+function normalize(u){ u = String(u||'').trim(); if(!/^https?:\/\//i.test(u)) u = 'https://'+u; return u; }
 
 function detect(url){
-  let h; try{ h = new URL(url).hostname.replace(/^www\./,''); }catch(e){ return null; }
-  if (TERABOX.some(d => h.endsWith(d))) return 'terabox';
+  let h; try{ h = new URL(url).hostname.toLowerCase().replace(/^www\./,''); }catch(e){ return null; }
+  if (TERABOX.some(k => h.includes(k))) return 'terabox';
   if (h.includes('diskwala')) return 'diskwala';
   if (h.includes('shortfly') || h.includes('shrtfly')) return 'shortfly';
   return null;
@@ -77,10 +81,12 @@ async function notImplemented(name){
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  const url = (req.query && req.query.url) || '';
+  let url = (req.query && req.query.url) || '';
   if (!url) return res.status(400).json({ error: 'Missing ?url=' });
+  url = normalize(url);
 
   const plat = detect(url);
+  if (!plat) return res.status(400).json({ error: 'Unrecognized link. Paste the exact domain to me: '+ (()=>{try{return new URL(url).hostname}catch(e){return url}})() });
   try{
     let out;
     if (plat === 'terabox') out = await resolveTerabox(url);
