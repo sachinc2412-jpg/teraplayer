@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>My Player</title>
+<style>
+  :root{
+    --bg:#0b0d12; --panel:#151922; --panel2:#1c2230; --line:#2a3242;
+    --txt:#e8ecf3; --dim:#8b93a4; --acc:#6d5efc; --acc2:#22c55e; --err:#ef4444;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    background:var(--bg); color:var(--txt); min-height:100vh;
+    display:flex; flex-direction:column; align-items:center; padding:20px;
+  }
+  h1{font-size:clamp(22px,5vw,34px); margin:24px 0 4px; text-align:center;
+     background:linear-gradient(90deg,#8b7bff,#6d5efc); -webkit-background-clip:text; background-clip:text; color:transparent}
+  .sub{color:var(--dim); margin:0 0 24px; text-align:center; font-size:14px}
+  .wrap{width:100%; max-width:760px}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px; margin-bottom:16px}
+  .inrow{display:flex; gap:10px}
+  input{
+    flex:1; background:var(--panel2); border:1px solid var(--line); color:var(--txt);
+    border-radius:10px; padding:14px 16px; font-size:15px; outline:none; min-width:0;
+  }
+  input:focus{border-color:var(--acc)}
+  button{border:none; border-radius:10px; font-size:15px; font-weight:600; cursor:pointer; color:#fff; padding:14px 18px; transition:.15s}
+  button:disabled{opacity:.5; cursor:not-allowed}
+  .paste{background:var(--acc); white-space:nowrap}
+  .btns{display:flex; gap:12px; margin-top:12px}
+  .btns button{flex:1}
+  .play{background:#4338ca}
+  .dl{background:#166534}
+  .plat{font-size:12px; color:var(--dim); margin-top:10px; min-height:16px}
+  .plat b{color:var(--acc)}
+  video{width:100%; border-radius:12px; margin-top:6px; background:#000; display:none}
+  .meta{display:none; font-size:13px; color:var(--dim); margin-top:10px; word-break:break-all}
+  .msg{display:none; padding:12px 14px; border-radius:10px; margin-top:12px; font-size:14px}
+  .msg.err{display:block; background:#3a1a1f; border:1px solid var(--err); color:#ffd7d7}
+  .msg.info{display:block; background:#182033; border:1px solid var(--acc); color:#cdd6ff}
+  .spin{display:inline-block; width:14px; height:14px; border:2px solid #fff6; border-top-color:#fff; border-radius:50%; animation:s .7s linear infinite; vertical-align:-2px; margin-right:8px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  @media(max-width:520px){ .inrow{flex-direction:column} .paste{width:100%} }
+</style>
+</head>
+<body>
+  <h1>Ad-Free Player</h1>
+  <p class="sub">Paste a video share link. Personal use.</p>
+
+  <div class="wrap">
+    <div class="card">
+      <div class="inrow">
+        <input id="link" type="text" placeholder="Paste TeraBox / Diskwala / ShortFly link..." autocomplete="off" />
+        <button class="paste" id="pasteBtn">Paste</button>
+      </div>
+      <div class="btns">
+        <button class="play" id="playBtn">▶ Play</button>
+        <button class="dl"   id="dlBtn">⬇ Download</button>
+      </div>
+      <div class="plat" id="plat"></div>
+      <div class="msg" id="msg"></div>
+      <div class="meta" id="meta"></div>
+      <video id="video" controls playsinline preload="metadata"></video>
+    </div>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+const link = $('link'), video = $('video'), msg = $('msg'), meta = $('meta'), plat = $('plat');
+
+const DOMAINS = {
+  terabox: ['terabox.com','terabox.app','1024terabox.com','1024tera.com','4funbox.com','mirrobox.com','nephobox.com','momerybox.com','teraboxapp.com','terasharelink.com','terafileshare.com'],
+  diskwala: ['diskwala.com','diskwala'],
+  shortfly: ['shortfly','shrtfly']
+};
+function detect(u){
+  try{ const h = new URL(u).hostname.replace(/^www\./,'');
+    for(const [k,arr] of Object.entries(DOMAINS)) if(arr.some(d=>h.includes(d))) return k;
+  }catch(e){}
+  return null;
+}
+function showMsg(t,type='err'){ msg.className='msg '+type; msg.innerHTML=t; }
+function clearMsg(){ msg.className='msg'; msg.innerHTML=''; }
+function setBusy(b){ $('playBtn').disabled=b; $('dlBtn').disabled=b; }
+
+link.addEventListener('input', ()=>{
+  const p = detect(link.value.trim());
+  plat.innerHTML = p ? `Detected: <b>${p}</b>` : (link.value.trim()? 'Unknown link' : '');
+});
+
+$('pasteBtn').onclick = async ()=>{
+  try{ link.value = await navigator.clipboard.readText(); link.dispatchEvent(new Event('input')); }
+  catch(e){ showMsg('Clipboard blocked. Paste manually.'); }
+};
+
+// cache last resolve so Play then Download doesn't re-hit API
+let lastLink='', lastData=null;
+
+async function resolve(url){
+  if(url===lastLink && lastData) return lastData;
+  const r = await fetch('/api/resolve?url='+encodeURIComponent(url));
+  const data = await r.json();
+  if(!r.ok || data.error) throw new Error(data.error || ('HTTP '+r.status));
+  lastLink=url; lastData=data; return data;
+}
+
+$('playBtn').onclick = async ()=>{
+  const url = link.value.trim();
+  if(!url) return showMsg('Empty link.');
+  clearMsg(); setBusy(true); showMsg('<span class="spin"></span>Resolving...','info');
+  try{
+    const d = await resolve(url);
+    const src = '/api/proxy?url='+encodeURIComponent(d.direct_url);
+    video.src = src; video.style.display='block'; video.play().catch(()=>{});
+    meta.style.display='block';
+    meta.innerHTML = `${d.file_name||'video'} · ${d.size||''}`;
+    clearMsg();
+  }catch(e){ video.style.display='none'; showMsg('Play failed: '+e.message); }
+  finally{ setBusy(false); }
+};
+
+$('dlBtn').onclick = async ()=>{
+  const url = link.value.trim();
+  if(!url) return showMsg('Empty link.');
+  clearMsg(); setBusy(true); showMsg('<span class="spin"></span>Preparing download...','info');
+  try{
+    const d = await resolve(url);
+    const name = (d.file_name||'video.mp4').replace(/[^\w.\-]+/g,'_');
+    const dl = '/api/proxy?dl=1&name='+encodeURIComponent(name)+'&url='+encodeURIComponent(d.direct_url);
+    const a = document.createElement('a'); a.href=dl; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+    clearMsg();
+  }catch(e){ showMsg('Download failed: '+e.message); }
+  finally{ setBusy(false); }
+};
+</script>
+</body>
+</html>
